@@ -2,62 +2,45 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\DTOs\Card\StoreCardData;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Card\StoreCardRequest;
+use App\Http\Requests\Card\UpdateCardRequest;
+use App\Http\Resources\CardResource;
 use App\Models\Card;
 use App\Models\Column;
+use App\Services\CardService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class CardController extends Controller
 {
-    public function store(Request $request, Column $column): JsonResponse
+    public function __construct(private readonly CardService $cardService) {}
+
+    public function store(StoreCardRequest $request, Column $column): JsonResponse
     {
-        abort_if($column->board->user_id !== $request->user()->id, 403);
+        $card = $this->cardService->create($column, StoreCardData::fromRequest($request));
 
-        $data = $request->validate([
-            'title'       => 'required|string|max:255',
-            'description' => 'nullable|string',
-        ]);
-
-        $position = $column->cards()->max('position') + 1;
-
-        $card = $column->cards()->create([
-            'title'       => $data['title'],
-            'description' => $data['description'] ?? null,
-            'position'    => $position,
-        ]);
-
-        return response()->json($card, 201);
+        return response()->json(new CardResource($card), 201);
     }
 
     public function show(Request $request, Card $card): JsonResponse
     {
-        abort_if($card->column->board->user_id !== $request->user()->id, 403);
+        $card = $this->cardService->findForUser($request->user(), $card);
 
-        return response()->json($card);
+        return response()->json(new CardResource($card));
     }
 
-    public function update(Request $request, Card $card): JsonResponse
+    public function update(UpdateCardRequest $request, Card $card): JsonResponse
     {
-        abort_if($card->column->board->user_id !== $request->user()->id, 403);
+        $card = $this->cardService->update($card, $request->validated());
 
-        $data = $request->validate([
-            'title'       => 'sometimes|string|max:255',
-            'description' => 'nullable|string',
-            'position'    => 'sometimes|integer|min:0',
-            'column_id'   => 'sometimes|integer|exists:columns,id',
-        ]);
-
-        $card->update($data);
-
-        return response()->json($card);
+        return response()->json(new CardResource($card));
     }
 
     public function destroy(Request $request, Card $card): JsonResponse
     {
-        abort_if($card->column->board->user_id !== $request->user()->id, 403);
-
-        $card->delete();
+        $this->cardService->deleteForUser($request->user(), $card);
 
         return response()->json(null, 204);
     }

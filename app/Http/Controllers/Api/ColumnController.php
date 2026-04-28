@@ -2,51 +2,38 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\DTOs\Column\StoreColumnData;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Column\StoreColumnRequest;
+use App\Http\Requests\Column\UpdateColumnRequest;
+use App\Http\Resources\ColumnResource;
 use App\Models\Board;
 use App\Models\Column;
+use App\Services\ColumnService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class ColumnController extends Controller
 {
-    public function store(Request $request, Board $board): JsonResponse
+    public function __construct(private readonly ColumnService $columnService) {}
+
+    public function store(StoreColumnRequest $request, Board $board): JsonResponse
     {
-        abort_if($board->user_id !== $request->user()->id, 403);
+        $column = $this->columnService->create($board, StoreColumnData::fromRequest($request));
 
-        $data = $request->validate([
-            'name' => 'required|string|max:255',
-        ]);
-
-        $position = $board->columns()->max('position') + 1;
-
-        $column = $board->columns()->create([
-            'name'     => $data['name'],
-            'position' => $position,
-        ]);
-
-        return response()->json($column, 201);
+        return response()->json(new ColumnResource($column), 201);
     }
 
-    public function update(Request $request, Column $column): JsonResponse
+    public function update(UpdateColumnRequest $request, Column $column): JsonResponse
     {
-        abort_if($column->board->user_id !== $request->user()->id, 403);
+        $column = $this->columnService->update($column, $request->validated());
 
-        $data = $request->validate([
-            'name'     => 'sometimes|string|max:255',
-            'position' => 'sometimes|integer|min:0',
-        ]);
-
-        $column->update($data);
-
-        return response()->json($column);
+        return response()->json(new ColumnResource($column));
     }
 
     public function destroy(Request $request, Column $column): JsonResponse
     {
-        abort_if($column->board->user_id !== $request->user()->id, 403);
-
-        $column->delete();
+        $this->columnService->deleteForUser($request->user(), $column);
 
         return response()->json(null, 204);
     }

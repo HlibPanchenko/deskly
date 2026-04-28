@@ -2,66 +2,52 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\DTOs\Board\StoreBoardData;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Board\StoreBoardRequest;
+use App\Http\Requests\Board\UpdateBoardRequest;
+use App\Http\Resources\BoardResource;
 use App\Models\Board;
+use App\Services\BoardService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class BoardController extends Controller
 {
+    public function __construct(private readonly BoardService $boardService) {}
+
     public function index(Request $request): JsonResponse
     {
-        $boards = $request->user()->boards()->latest()->get();
+        $boards = $this->boardService->listForUser($request->user());
 
-        return response()->json($boards);
+        return response()->json(BoardResource::collection($boards));
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(StoreBoardRequest $request): JsonResponse
     {
-        $data = $request->validate([
-            'name'        => 'required|string|max:255',
-            'description' => 'nullable|string|max:1000',
-        ]);
+        $board = $this->boardService->create($request->user(), StoreBoardData::fromRequest($request));
 
-        $board = $request->user()->boards()->create($data);
-
-        return response()->json($board, 201);
+        return response()->json(new BoardResource($board), 201);
     }
 
     public function show(Request $request, Board $board): JsonResponse
     {
-        $this->authorizeBoard($request, $board);
+        $board = $this->boardService->findForUser($request->user(), $board);
 
-        $board->load('columns.cards');
-
-        return response()->json($board);
+        return response()->json(new BoardResource($board));
     }
 
-    public function update(Request $request, Board $board): JsonResponse
+    public function update(UpdateBoardRequest $request, Board $board): JsonResponse
     {
-        $this->authorizeBoard($request, $board);
+        $board = $this->boardService->update($board, $request->validated());
 
-        $data = $request->validate([
-            'name'        => 'sometimes|string|max:255',
-            'description' => 'nullable|string|max:1000',
-        ]);
-
-        $board->update($data);
-
-        return response()->json($board);
+        return response()->json(new BoardResource($board));
     }
 
     public function destroy(Request $request, Board $board): JsonResponse
     {
-        $this->authorizeBoard($request, $board);
-
-        $board->delete();
+        $this->boardService->deleteForUser($request->user(), $board);
 
         return response()->json(null, 204);
-    }
-
-    private function authorizeBoard(Request $request, Board $board): void
-    {
-        abort_if($board->user_id !== $request->user()->id, 403);
     }
 }
